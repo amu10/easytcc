@@ -14,9 +14,14 @@ public final class RecoveryScheduler implements AutoCloseable {
     private final long intervalMillis;
     private final int batchSize;
     private final String owner = java.util.UUID.randomUUID().toString();
+    private final long purgeRetentionMillis;
 
     public RecoveryScheduler(TransactionRepository repository, TransactionManager manager, long intervalMillis, int batchSize) {
+        this(repository, manager, intervalMillis, batchSize, 0L);
+    }
+    public RecoveryScheduler(TransactionRepository repository, TransactionManager manager, long intervalMillis, int batchSize, long purgeRetentionMillis) {
         this.repository = repository; this.manager = manager; this.intervalMillis = intervalMillis; this.batchSize = batchSize;
+        this.purgeRetentionMillis = purgeRetentionMillis;
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "easy-tcc-recovery"); t.setDaemon(true); return t;
         });
@@ -34,6 +39,12 @@ public final class RecoveryScheduler implements AutoCloseable {
             if (!claimed.isPresent()) continue;
             try { manager.recover(claimed.get()); }
             catch (RuntimeException e) { log.warn("easyTcc recovery failed, xid={}", tx.getXid(), e); }
+        }
+        if (purgeRetentionMillis > 0) {
+            try {
+                List<String> purged = manager.purgeCompleted(purgeRetentionMillis, batchSize);
+                if (!purged.isEmpty()) log.info("easyTcc purged {} terminal transactions (operator=system, retention={}ms, xids={})", purged.size(), purgeRetentionMillis, purged);
+            } catch (RuntimeException e) { log.warn("easyTcc purge failed", e); }
         }
     }
     @Override public void close() { executor.shutdownNow(); }

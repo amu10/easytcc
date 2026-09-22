@@ -8,10 +8,13 @@
         <dependency><groupId>io.github.easytcc</groupId><artifactId>easy-tcc-spring</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>io.github.easytcc</groupId><artifactId>easy-tcc-storage-file</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>io.github.easytcc</groupId><artifactId>easy-tcc-storage-jdbc</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>io.github.easytcc</groupId><artifactId>easy-tcc-storage-redis</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-aop</artifactId><version>${spring-boot.version}</version></dependency>
         <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-configuration-processor</artifactId><version>${spring-boot.version}</version><optional>true</optional></dependency>
         <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>1.7.36</version></dependency>
         <dependency><groupId>javax.servlet</groupId><artifactId>javax.servlet-api</artifactId><version>4.0.1</version><scope>provided</scope></dependency>
         <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+        <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-actuator</artifactId><version>${spring-boot.version}</version><optional>true</optional></dependency>
+        <dependency><groupId>io.micrometer</groupId><artifactId>micrometer-core</artifactId><version>1.9.17</version><optional>true</optional></dependency>
     </dependencies>
 </project>

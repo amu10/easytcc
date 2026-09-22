@@ -33,4 +33,21 @@ class FileTransactionRepositoryTest {
         assertTrue(repository.tryClaimRecovery("cas-1", recoverable.getVersion(), "node-a", 100L, 10L).isPresent());
         assertFalse(repository.tryClaimRecovery("cas-1", recoverable.getVersion(), "node-b", 100L, 10L).isPresent());
     }
+
+    @Test void deletesTerminalTransactionsPastRetentionOnly() {
+        FileTransactionRepository repository = new FileTransactionRepository(directory);
+        GlobalTransaction old = new GlobalTransaction("old-done", "order", 1L, 2L);
+        old.setStatus(GlobalStatus.CONFIRMED);
+        repository.create(old);
+        GlobalTransaction recent = new GlobalTransaction("recent-done", "order", System.currentTimeMillis(), System.currentTimeMillis() + 1000L);
+        recent.setStatus(GlobalStatus.CANCELLED);
+        repository.create(recent);
+        GlobalTransaction active = new GlobalTransaction("still-trying", "order", 1L, 2L);
+        repository.create(active);
+
+        assertEquals(java.util.Collections.singletonList("old-done"), repository.deleteTerminal(1000L, 100));
+        assertFalse(repository.find("old-done").isPresent());
+        assertTrue(repository.find("recent-done").isPresent());
+        assertTrue(repository.find("still-trying").isPresent());
+    }
 }

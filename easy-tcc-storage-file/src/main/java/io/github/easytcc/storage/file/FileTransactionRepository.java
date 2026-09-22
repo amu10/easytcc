@@ -79,6 +79,16 @@ public final class FileTransactionRepository implements TransactionRepository {
         } finally { lock.writeLock().unlock(); }
     }
     @Override public void releaseExecutionLease(String xid) { renewExecutionLease(xid, 0L); }
+    @Override public Map<GlobalStatus, Long> countByStatus() {
+        Map<GlobalStatus, Long> counts = new EnumMap<GlobalStatus, Long>(GlobalStatus.class);
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.tx")) {
+            for (Path path : stream) {
+                GlobalTransaction tx = find(stripSuffix(path.getFileName().toString())).orElse(null);
+                if (tx != null) counts.put(tx.getStatus(), counts.containsKey(tx.getStatus()) ? counts.get(tx.getStatus()) + 1L : 1L);
+            }
+            return counts;
+        } catch (IOException e) { throw new EasyTccException("Cannot count transaction states", e); }
+    }
 
     @Override public List<GlobalTransaction> findRecoverable(long now, int limit) {
         List<GlobalTransaction> result = new ArrayList<GlobalTransaction>();
@@ -90,6 +100,30 @@ public final class FileTransactionRepository implements TransactionRepository {
             }
         } catch (IOException e) { throw new EasyTccException("Cannot scan transaction directory", e); }
         return result;
+    }
+
+    @Override public List<String> deleteTerminal(long createdBefore, int limit) {
+        if (limit <= 0) return Collections.emptyList();
+        List<String> deleted = new ArrayList<String>();
+        lock.writeLock().lock();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.tx")) {
+            for (Path path : stream) {
+                if (deleted.size() >= limit) break;
+                String xid = stripSuffix(path.getFileName().toString());
+                Optional<GlobalTransaction> value = readUnlocked(xid);
+                if (!value.isPresent()) continue;
+                GlobalTransaction tx = value.get();
+                if (!isTerminal(tx.getStatus()) || tx.getCreatedAt() >= createdBefore) continue;
+                Files.delete(path);
+                deleted.add(xid);
+            }
+        } catch (IOException e) { throw new EasyTccException("Cannot purge terminal transactions", e); }
+        finally { lock.writeLock().unlock(); }
+        return deleted;
+    }
+
+    private static boolean isTerminal(GlobalStatus status) {
+        return status == GlobalStatus.CONFIRMED || status == GlobalStatus.CANCELLED;
     }
 
     private void write(GlobalTransaction transaction, Path target) {

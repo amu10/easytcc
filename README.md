@@ -40,10 +40,10 @@ easyTcc 目前处于早期开发阶段。
 | 故障恢复调度 | 已完成 |
 | Spring Boot 2.7 Starter | 已完成 |
 | Spring Boot 3.x Starter | 已完成 |
-| Redis 存储 | 规划中 |
-| JDBC/主数据库存储 | 规划中 |
-| OpenFeign/HTTP 跨服务传播 | 规划中 |
-| Actuator 与 Micrometer | 规划中 |
+| Redis 存储 | 已完成 |
+| JDBC/主数据库存储 | 已完成 |
+| OpenFeign/HTTP 跨服务传播 | 已完成 |
+| Actuator 与 Micrometer | 已完成 |
 
 当前版本适合学习、验证和参与开发，暂不建议直接用于关键生产业务。
 
@@ -108,9 +108,12 @@ easy-tcc:
   max-retries: 20
   recovery-interval: 10000
   recovery-batch-size: 100
+  purge-retention: 604800000  # 终态事务保留 7 天后清理，0 禁用
 ```
 
 File 存储面向本地开发、测试和单实例应用。分支方法的参数需要实现 `Serializable`。
+
+恢复调度器会按 `purge-retention` 保留期自动清理已到终态（CONFIRMED/CANCELLED）的历史事务，避免存储无限膨胀；清理动作以结构化日志与 `easy_tcc.purged` 指标留痕。三种存储均支持该配置。
 
 生产集群使用 JDBC 存储，并先执行对应数据库建表脚本：
 
@@ -125,6 +128,20 @@ easy-tcc:
 建表脚本位于 `easy-tcc-storage-jdbc/src/main/resources/io/github/easytcc/storage/jdbc/`，当前提供 MySQL、PostgreSQL 和 H2 版本。JDBC 存储通过版本字段执行乐观锁，并使用带过期时间的恢复租约防止多个实例同时恢复同一事务。
 
 生产业务应在 Try、Confirm、Cancel 的本地数据库事务内调用 `JdbcTccBarrier`，并传入业务使用的同一个 `Connection`。只有 `beginTry`、`beginConfirm` 或 `beginCancel` 返回 `true` 时才执行相应资源操作；返回 `false` 表示重复调用或空操作。该屏障提供幂等、空回滚与防悬挂保护，但不能替代业务资源表自身的约束。
+
+生产集群也可以选择 Redis 存储（同样具备 CAS、恢复租约与执行租约，适用于多实例部署）。所有写操作通过 Lua 脚本原子完成，可恢复事务由有序集合索引支撑：
+
+```yaml
+easy-tcc:
+  storage: redis
+  redis-url: redis://localhost:6379
+  max-retries: 20
+  recovery-interval: 10000
+  recovery-batch-size: 100
+  purge-retention: 604800000  # 终态事务保留 7 天后清理，0 禁用
+```
+
+Redis 存储以 Hash 保存每个事务（`easy_tcc:tx:{xid}`），以有序集合 `easy_tcc:recoverable`（score 为截止时间或重试时间）支撑恢复扫描，审计事件写入列表 `easy_tcc:audit:{xid}`。若业务资源也在 Redis 中，可在同一 Redis 事务内调用 `RedisTccBarrier` 的 `beginTry/beginConfirm/beginCancel` 获得与 JDBC 屏障一致的三重防护。Redis 存储要求服务端启用 Lua 脚本（默认开启）。
 
 ### 3. 声明全局事务
 
@@ -194,6 +211,14 @@ Try、Confirm、Cancel 的参数需要保持兼容。业务入口正常完成时
 Starter 会在 Servlet Web 应用中注册入站 Filter，从 `X-Easy-Tcc-Xid` 请求头恢复事务上下文，并在请求结束时清理线程上下文。如果应用使用 OpenFeign，相应拦截器会自动加入 XID 请求头；使用 `RestTemplate` 时，将自动配置提供的 `EasyTccRestTemplateInterceptor` 添加到目标实例。传播的服务必须访问同一个集群事务存储。
 
 异步线程不会隐式继承事务上下文。需要异步执行时，应显式捕获 XID，并通过 `EasyTccPropagation.open(xid)` 创建有界作用域；不要直接在线程池任务之间复用 `ThreadLocal`。
+
+## 人工处置
+
+`TransactionManager.query(xid)` 查询事务，`suspend(xid, reason, operator)` 将非终态事务转入人工介入状态，`retryManually(xid, operator)` 按已经持久化的原始 Confirm/Cancel 决议继续恢复。`auditTrail(xid, limit)` 返回审计记录。JDBC 存储会把开始、暂停、人工重试和最终完成事件写入 `easy_tcc_audit`；管理端点应由应用自行鉴权，不应直接暴露到公网。
+
+## 监控与告警
+
+引入 Spring Boot Actuator 后，Starter 提供 easyTcc 健康检查；存储不可访问时健康状态为 DOWN，事务状态数量和人工介入数量放在详情中。Micrometer 指标前缀为 `easy_tcc`，包括开始、完成、失败、恢复尝试、人工介入累计值，以及带 `status` 标签的事务状态数量。建议对 `MANUAL_INTERVENTION > 0`、失败增长、恢复积压持续增长和存储健康 DOWN 建立告警；阈值应结合业务 SLO 设置，避免把待人工处理直接等同于实例不可用。
 
 ## 构建与运行
 

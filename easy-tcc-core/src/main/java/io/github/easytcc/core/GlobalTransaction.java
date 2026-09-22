@@ -18,6 +18,8 @@ public final class GlobalTransaction implements Serializable {
     private String recoveryOwner;
     private long recoveryLeaseUntil;
     private long executionLeaseUntil;
+    private TransactionDecision decision = TransactionDecision.UNDECIDED;
+    private String lastError;
     private final List<BranchTransaction> branches = new ArrayList<BranchTransaction>();
 
     public GlobalTransaction(String xid, String name, long createdAt, long deadline) {
@@ -42,6 +44,11 @@ public final class GlobalTransaction implements Serializable {
     public void touch() { this.version++; }
     public long getExecutionLeaseUntil() { return executionLeaseUntil; }
     public void setExecutionLeaseUntil(long executionLeaseUntil) { this.executionLeaseUntil = executionLeaseUntil; }
+    public TransactionDecision getDecision() { return decision; }
+    public void setDecision(TransactionDecision decision) { this.decision = decision; this.version++; }
+    public String getLastError() { return lastError; }
+    public void setLastError(String lastError) { this.lastError = lastError; this.version++; }
+    public void resetRetryCount() { this.retryCount = 0; this.version++; }
     public List<BranchTransaction> getBranches() { return Collections.unmodifiableList(branches); }
     public void addBranch(BranchTransaction branch) { branches.add(branch); version++; }
 }

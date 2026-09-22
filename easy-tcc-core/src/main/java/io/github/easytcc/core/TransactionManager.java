@@ -14,6 +14,7 @@ public final class TransactionManager {
     private final int maxRetries;
     private final Map<String, AtomicInteger> locallyActive = new ConcurrentHashMap<String, AtomicInteger>();
     private final long executionLeaseMillis;
+    private final EasyTccMetrics metrics = new EasyTccMetrics();
 
     public TransactionManager(TransactionRepository repository, BranchInvoker invoker, int maxRetries) {
         this(repository, invoker, maxRetries, 30000L);
@@ -30,6 +31,8 @@ public final class TransactionManager {
         GlobalTransaction tx = new GlobalTransaction(UUID.randomUUID().toString(), name, now, now + timeoutMillis);
         tx.setExecutionLeaseUntil(now + executionLeaseMillis);
         repository.create(tx);
+        metrics.transactionStarted();
+        audit(tx.getXid(), "BEGIN", name, "system");
         enter(tx.getXid());
         EasyTccContext.bind(tx.getXid());
         return tx;
@@ -104,19 +107,68 @@ public final class TransactionManager {
         if (transaction.getRetryCount() >= maxRetries) {
             long expectedVersion = transaction.getVersion();
             transaction.setStatus(GlobalStatus.MANUAL_INTERVENTION);
+            transaction.setLastError("Recovery attempts exhausted after " + transaction.getRetryCount() + " retries");
             save(transaction, expectedVersion);
+            metrics.manualIntervention();
+            audit(transaction.getXid(), "MANUAL_INTERVENTION", "retries exhausted", "system");
             return;
         }
         long expectedVersion = transaction.getVersion();
+        metrics.recoveryAttempt();
         transaction.incrementRetryCount();
         save(transaction, expectedVersion);
-        execute(transaction, transaction.getStatus() == GlobalStatus.CONFIRMING || transaction.getStatus() == GlobalStatus.CONFIRM_FAILED);
+        execute(transaction, transaction.getDecision() == TransactionDecision.CONFIRM);
+    }
+
+    public GlobalTransaction suspend(String xid, String reason, String operator) {
+        GlobalTransaction tx = required(xid);
+        if (tx.getStatus() == GlobalStatus.CONFIRMED || tx.getStatus() == GlobalStatus.CANCELLED)
+            throw new EasyTccException("Terminal transaction cannot be suspended: " + xid);
+        long expected = tx.getVersion();
+        tx.setLastError(reason); tx.setStatus(GlobalStatus.MANUAL_INTERVENTION);
+        save(tx, expected); metrics.manualIntervention(); audit(xid, "SUSPEND", reason, operator); return tx;
+    }
+
+    public void retryManually(String xid, String operator) {
+        GlobalTransaction tx = required(xid);
+        if (tx.getStatus() != GlobalStatus.MANUAL_INTERVENTION)
+            throw new EasyTccException("Transaction is not awaiting manual intervention: " + xid);
+        if (tx.getDecision() == TransactionDecision.UNDECIDED)
+            throw new EasyTccException("Transaction has no durable decision: " + xid);
+        long expected = tx.getVersion();
+        tx.resetRetryCount();
+        tx.setStatus(tx.getDecision() == TransactionDecision.CONFIRM ? GlobalStatus.CONFIRM_FAILED : GlobalStatus.CANCEL_FAILED);
+        save(tx, expected); audit(xid, "MANUAL_RETRY", tx.getDecision().name(), operator); recover(tx);
+    }
+
+    public java.util.Optional<GlobalTransaction> query(String xid) { return repository.find(xid); }
+    public java.util.List<TransactionAuditEvent> auditTrail(String xid, int limit) { return repository.findAudit(xid, limit); }
+
+    /**
+     * 按保留期归档清理已到终态（CONFIRMED/CANCELLED）的历史事务，避免存储无限膨胀。
+     * 返回实际删除的 xid 列表，供调度器以结构化日志 + 指标完成"操作可审计"留痕。
+     *
+     * @param retentionMillis 保留期（毫秒），创建时间早于 {@code now - retentionMillis} 的终态事务才会被清理；&lt;=0 表示不清理
+     * @param batchSize       单次清理上限
+     * @return 被删除的 xid 列表
+     */
+    public java.util.List<String> purgeCompleted(long retentionMillis, int batchSize) {
+        if (retentionMillis <= 0 || batchSize <= 0) return Collections.emptyList();
+        long createdBefore = System.currentTimeMillis() - retentionMillis;
+        java.util.List<String> deleted = repository.deleteTerminal(createdBefore, batchSize);
+        if (!deleted.isEmpty()) metrics.purged(deleted.size());
+        return deleted;
     }
 
     private void execute(GlobalTransaction tx, boolean confirming) {
         long expectedVersion = tx.getVersion();
+        TransactionDecision decision = confirming ? TransactionDecision.CONFIRM : TransactionDecision.CANCEL;
+        if (tx.getDecision() != TransactionDecision.UNDECIDED && tx.getDecision() != decision)
+            throw new EasyTccException("Durable decision conflict for " + tx.getXid());
+        if (tx.getDecision() == TransactionDecision.UNDECIDED) tx.setDecision(decision);
         tx.setStatus(confirming ? GlobalStatus.CONFIRMING : GlobalStatus.CANCELLING);
         save(tx, expectedVersion);
+        audit(tx.getXid(), confirming ? "CONFIRMING" : "CANCELLING", "", "system");
         List<BranchTransaction> branches = new ArrayList<BranchTransaction>(tx.getBranches());
         if (!confirming) Collections.reverse(branches);
         try {
@@ -128,14 +180,18 @@ public final class TransactionManager {
             }
             expectedVersion = tx.getVersion();
             tx.setStatus(confirming ? GlobalStatus.CONFIRMED : GlobalStatus.CANCELLED);
+            audit(tx.getXid(), confirming ? "CONFIRMED" : "CANCELLED", "", "system");
         } catch (Exception error) {
+            metrics.failure();
             expectedVersion = tx.getVersion();
             tx.setStatus(confirming ? GlobalStatus.CONFIRM_FAILED : GlobalStatus.CANCEL_FAILED);
             tx.setNextRetryAt(System.currentTimeMillis() + retryDelay(tx.getRetryCount()));
             save(tx, expectedVersion);
+            audit(tx.getXid(), confirming ? "CONFIRM_FAILED" : "CANCEL_FAILED", message(error), "system");
             throw new EasyTccException("TCC " + (confirming ? "confirm" : "cancel") + " failed for " + tx.getXid(), error);
         }
         save(tx, expectedVersion);
+        metrics.transactionCompleted();
     }
 
     private void confirm(BranchTransaction branch) throws Exception {
@@ -168,5 +224,9 @@ public final class TransactionManager {
             throw new EasyTccException("Concurrent transaction update rejected: " + tx.getXid());
         }
     }
+    private void audit(String xid, String operation, String detail, String operator) {
+        repository.appendAudit(new TransactionAuditEvent(xid, System.currentTimeMillis(), operation, detail, operator));
+    }
+    public EasyTccMetrics getMetrics() { return metrics; }
     private static String message(Throwable e) { return e == null ? null : e.getClass().getName() + ": " + e.getMessage(); }
 }
