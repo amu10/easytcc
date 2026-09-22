@@ -60,6 +60,7 @@ public final class EasyTccAspect {
             throw error;
         } finally {
             EasyTccContext.clearBranch();
+            manager.release(branch.getXid());
         }
     }
 

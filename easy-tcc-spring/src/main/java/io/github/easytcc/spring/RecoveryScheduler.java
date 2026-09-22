@@ -23,7 +23,9 @@ public final class RecoveryScheduler implements AutoCloseable {
     }
     public void start() { executor.scheduleWithFixedDelay(this::scan, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS); }
     void scan() {
-        List<GlobalTransaction> transactions = repository.findRecoverable(System.currentTimeMillis(), batchSize);
+        long now = System.currentTimeMillis();
+        manager.renewActiveLeases(now);
+        List<GlobalTransaction> transactions = repository.findRecoverable(now, batchSize);
         for (GlobalTransaction tx : transactions) {
             if (manager.isLocallyActive(tx.getXid())) continue;
             java.util.Optional<GlobalTransaction> claimed = repository.tryClaimRecovery(

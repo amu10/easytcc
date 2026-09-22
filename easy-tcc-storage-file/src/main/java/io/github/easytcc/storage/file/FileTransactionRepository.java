@@ -70,6 +70,16 @@ public final class FileTransactionRepository implements TransactionRepository {
         } finally { lock.writeLock().unlock(); }
     }
 
+    @Override public boolean renewExecutionLease(String xid, long leaseUntil) {
+        lock.writeLock().lock();
+        try {
+            Optional<GlobalTransaction> value = readUnlocked(xid);
+            if (!value.isPresent()) return false;
+            value.get().setExecutionLeaseUntil(leaseUntil); write(value.get(), file(xid)); return true;
+        } finally { lock.writeLock().unlock(); }
+    }
+    @Override public void releaseExecutionLease(String xid) { renewExecutionLease(xid, 0L); }
+
     @Override public List<GlobalTransaction> findRecoverable(long now, int limit) {
         List<GlobalTransaction> result = new ArrayList<GlobalTransaction>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.tx")) {
@@ -111,6 +121,7 @@ public final class FileTransactionRepository implements TransactionRepository {
     private static String stripSuffix(String name) { return name.substring(0, name.length() - 3); }
     private static boolean recoverable(GlobalTransaction tx, long now) {
         GlobalStatus s = tx.getStatus();
+        if (tx.getExecutionLeaseUntil() > now) return false;
         if (s == GlobalStatus.TRYING && tx.getDeadline() <= now) return true;
         return (s == GlobalStatus.CONFIRMING || s == GlobalStatus.CONFIRM_FAILED ||
                 s == GlobalStatus.CANCELLING || s == GlobalStatus.CANCEL_FAILED) && tx.getNextRetryAt() <= now;

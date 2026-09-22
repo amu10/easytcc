@@ -10,5 +10,7 @@ public interface TransactionRepository {
     boolean compareAndSet(GlobalTransaction transaction, long expectedVersion);
     Optional<GlobalTransaction> tryClaimRecovery(String xid, long expectedVersion,
                                                   String owner, long leaseUntil, long now);
+    boolean renewExecutionLease(String xid, long leaseUntil);
+    void releaseExecutionLease(String xid);
     List<GlobalTransaction> findRecoverable(long now, int limit);
 }

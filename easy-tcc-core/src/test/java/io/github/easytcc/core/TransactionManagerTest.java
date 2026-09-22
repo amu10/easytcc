@@ -76,6 +76,8 @@ class TransactionManagerTest {
             GlobalTransaction claimed = copy(tx); claimed.claimRecovery(owner, leaseUntil); data.put(xid, copy(claimed));
             return Optional.of(claimed);
         }
+        public boolean renewExecutionLease(String xid, long leaseUntil) { return data.containsKey(xid); }
+        public void releaseExecutionLease(String xid) { }
         public List<GlobalTransaction> findRecoverable(long now, int limit) { return Collections.emptyList(); }
         private static GlobalTransaction copy(GlobalTransaction tx) {
             try {

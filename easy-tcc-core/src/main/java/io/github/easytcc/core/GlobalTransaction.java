@@ -17,6 +17,7 @@ public final class GlobalTransaction implements Serializable {
     private long version;
     private String recoveryOwner;
     private long recoveryLeaseUntil;
+    private long executionLeaseUntil;
     private final List<BranchTransaction> branches = new ArrayList<BranchTransaction>();
 
     public GlobalTransaction(String xid, String name, long createdAt, long deadline) {
@@ -39,6 +40,8 @@ public final class GlobalTransaction implements Serializable {
     public void claimRecovery(String owner, long leaseUntil) { this.recoveryOwner = owner; this.recoveryLeaseUntil = leaseUntil; this.version++; }
     public void clearRecoveryClaim() { this.recoveryOwner = null; this.recoveryLeaseUntil = 0L; this.version++; }
     public void touch() { this.version++; }
+    public long getExecutionLeaseUntil() { return executionLeaseUntil; }
+    public void setExecutionLeaseUntil(long executionLeaseUntil) { this.executionLeaseUntil = executionLeaseUntil; }
     public List<BranchTransaction> getBranches() { return Collections.unmodifiableList(branches); }
     public void addBranch(BranchTransaction branch) { branches.add(branch); version++; }
 }

@@ -4,26 +4,33 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class TransactionManager {
     private final TransactionRepository repository;
     private final BranchInvoker invoker;
     private final int maxRetries;
-    private final Set<String> locallyActive = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+    private final Map<String, AtomicInteger> locallyActive = new ConcurrentHashMap<String, AtomicInteger>();
+    private final long executionLeaseMillis;
 
     public TransactionManager(TransactionRepository repository, BranchInvoker invoker, int maxRetries) {
+        this(repository, invoker, maxRetries, 30000L);
+    }
+    public TransactionManager(TransactionRepository repository, BranchInvoker invoker, int maxRetries, long executionLeaseMillis) {
         this.repository = repository;
         this.invoker = invoker;
         this.maxRetries = maxRetries;
+        this.executionLeaseMillis = executionLeaseMillis;
     }
 
     public GlobalTransaction begin(String name, long timeoutMillis) {
         long now = System.currentTimeMillis();
         GlobalTransaction tx = new GlobalTransaction(UUID.randomUUID().toString(), name, now, now + timeoutMillis);
+        tx.setExecutionLeaseUntil(now + executionLeaseMillis);
         repository.create(tx);
-        locallyActive.add(tx.getXid());
+        enter(tx.getXid());
         EasyTccContext.bind(tx.getXid());
         return tx;
     }
@@ -35,10 +42,14 @@ public final class TransactionManager {
         BranchTransaction branch = new BranchTransaction(UUID.randomUUID().toString(), xid, name, beanName, confirm, cancel, args);
         try { invoker.validate(branch); }
         catch (Exception e) { throw new EasyTccException("Invalid TCC branch " + name, e); }
-        long expectedVersion = tx.getVersion();
-        tx.addBranch(branch);
-        save(tx, expectedVersion);
-        return branch;
+        enter(xid);
+        try {
+            repository.renewExecutionLease(xid, System.currentTimeMillis() + executionLeaseMillis);
+            long expectedVersion = tx.getVersion();
+            tx.addBranch(branch);
+            save(tx, expectedVersion);
+            return branch;
+        } catch (RuntimeException e) { release(xid); throw e; }
     }
 
     public void markTrySucceeded(BranchTransaction branch) {
@@ -78,8 +89,16 @@ public final class TransactionManager {
         execute(tx, false);
     }
 
-    public boolean isLocallyActive(String xid) { return locallyActive.contains(xid); }
-    public void release(String xid) { locallyActive.remove(xid); }
+    public boolean isLocallyActive(String xid) { return locallyActive.containsKey(xid); }
+    public void release(String xid) {
+        AtomicInteger count = locallyActive.get(xid);
+        if (count != null && count.decrementAndGet() <= 0 && locallyActive.remove(xid, count)) repository.releaseExecutionLease(xid);
+    }
+    public void renewActiveLeases(long now) {
+        long until = now + executionLeaseMillis;
+        for (String xid : locallyActive.keySet()) repository.renewExecutionLease(xid, until);
+    }
+    private void enter(String xid) { locallyActive.computeIfAbsent(xid, key -> new AtomicInteger()).incrementAndGet(); }
 
     public void recover(GlobalTransaction transaction) {
         if (transaction.getRetryCount() >= maxRetries) {

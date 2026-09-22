@@ -24,9 +24,10 @@ public class EasyTccAutoConfiguration {
     public BranchInvoker easyTccBranchInvoker(ApplicationContext c) { return new SpringBranchInvoker(c); }
     @Bean @ConditionalOnMissingBean
     public TransactionManager easyTccTransactionManager(TransactionRepository r, BranchInvoker i, EasyTccProperties p) {
-        return new TransactionManager(r, i, p.getMaxRetries());
+        return new TransactionManager(r, i, p.getMaxRetries(), Math.max(30000L, p.getRecoveryInterval() * 3));
     }
     @Bean public EasyTccAspect easyTccAspect(TransactionManager m) { return new EasyTccAspect(m); }
+    @Bean public EasyTccStartupValidator easyTccStartupValidator(ApplicationContext c) { return new EasyTccStartupValidator(c); }
     @Bean(initMethod = "start", destroyMethod = "close") @ConditionalOnMissingBean
     public RecoveryScheduler easyTccRecoveryScheduler(TransactionRepository r, TransactionManager m, EasyTccProperties p) {
         return new RecoveryScheduler(r, m, p.getRecoveryInterval(), p.getRecoveryBatchSize());
