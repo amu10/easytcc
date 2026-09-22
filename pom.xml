@@ -14,6 +14,7 @@
     <modules>
         <module>easy-tcc-core</module>
         <module>easy-tcc-storage-file</module>
+        <module>easy-tcc-storage-jdbc</module>
         <module>easy-tcc-spring</module>
         <module>easy-tcc-spring-boot2-starter</module>
         <module>easy-tcc-spring-boot3-starter</module>

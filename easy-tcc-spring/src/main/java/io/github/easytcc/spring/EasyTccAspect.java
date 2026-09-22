@@ -29,12 +29,17 @@ public final class EasyTccAspect {
         } catch (Throwable businessError) {
             try { manager.cancel(tx.getXid()); }
             catch (Throwable cancelError) { businessError.addSuppressed(cancelError); }
+            finally { manager.release(tx.getXid()); }
             throw businessError;
         } finally {
             EasyTccContext.clear();
         }
-        manager.confirm(tx.getXid());
-        return result;
+        try {
+            manager.confirm(tx.getXid());
+            return result;
+        } finally {
+            manager.release(tx.getXid());
+        }
     }
 
     @Around("@annotation(io.github.easytcc.annotation.EasyTccAction)")
@@ -45,6 +50,7 @@ public final class EasyTccAspect {
         String name = annotation.name().isEmpty() ? method.getDeclaringClass().getSimpleName() + "." + method.getName() : annotation.name();
         BranchTransaction branch = manager.registerBranch(name, method.getDeclaringClass().getName(),
                 annotation.confirm(), annotation.cancel(), point.getArgs());
+        EasyTccContext.bindBranch(branch.getBranchId());
         try {
             Object result = point.proceed();
             manager.markTrySucceeded(branch);
@@ -52,6 +58,8 @@ public final class EasyTccAspect {
         } catch (Throwable error) {
             manager.markTryFailed(branch, error);
             throw error;
+        } finally {
+            EasyTccContext.clearBranch();
         }
     }
 

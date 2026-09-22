@@ -13,6 +13,7 @@ public final class RecoveryScheduler implements AutoCloseable {
     private final ScheduledExecutorService executor;
     private final long intervalMillis;
     private final int batchSize;
+    private final String owner = java.util.UUID.randomUUID().toString();
 
     public RecoveryScheduler(TransactionRepository repository, TransactionManager manager, long intervalMillis, int batchSize) {
         this.repository = repository; this.manager = manager; this.intervalMillis = intervalMillis; this.batchSize = batchSize;
@@ -24,7 +25,12 @@ public final class RecoveryScheduler implements AutoCloseable {
     void scan() {
         List<GlobalTransaction> transactions = repository.findRecoverable(System.currentTimeMillis(), batchSize);
         for (GlobalTransaction tx : transactions) {
-            try { manager.recover(tx); }
+            if (manager.isLocallyActive(tx.getXid())) continue;
+            java.util.Optional<GlobalTransaction> claimed = repository.tryClaimRecovery(
+                    tx.getXid(), tx.getVersion(), owner, System.currentTimeMillis() + Math.max(intervalMillis * 3, 30000L),
+                    System.currentTimeMillis());
+            if (!claimed.isPresent()) continue;
+            try { manager.recover(claimed.get()); }
             catch (RuntimeException e) { log.warn("easyTcc recovery failed, xid={}", tx.getXid(), e); }
         }
     }

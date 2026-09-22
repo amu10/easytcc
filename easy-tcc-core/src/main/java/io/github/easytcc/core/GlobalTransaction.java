@@ -15,6 +15,8 @@ public final class GlobalTransaction implements Serializable {
     private int retryCount;
     private long nextRetryAt;
     private long version;
+    private String recoveryOwner;
+    private long recoveryLeaseUntil;
     private final List<BranchTransaction> branches = new ArrayList<BranchTransaction>();
 
     public GlobalTransaction(String xid, String name, long createdAt, long deadline) {
@@ -30,8 +32,13 @@ public final class GlobalTransaction implements Serializable {
     public int getRetryCount() { return retryCount; }
     public void incrementRetryCount() { this.retryCount++; this.version++; }
     public long getNextRetryAt() { return nextRetryAt; }
-    public void setNextRetryAt(long nextRetryAt) { this.nextRetryAt = nextRetryAt; }
+    public void setNextRetryAt(long nextRetryAt) { this.nextRetryAt = nextRetryAt; this.version++; }
     public long getVersion() { return version; }
+    public String getRecoveryOwner() { return recoveryOwner; }
+    public long getRecoveryLeaseUntil() { return recoveryLeaseUntil; }
+    public void claimRecovery(String owner, long leaseUntil) { this.recoveryOwner = owner; this.recoveryLeaseUntil = leaseUntil; this.version++; }
+    public void clearRecoveryClaim() { this.recoveryOwner = null; this.recoveryLeaseUntil = 0L; this.version++; }
+    public void touch() { this.version++; }
     public List<BranchTransaction> getBranches() { return Collections.unmodifiableList(branches); }
     public void addBranch(BranchTransaction branch) { branches.add(branch); version++; }
 }

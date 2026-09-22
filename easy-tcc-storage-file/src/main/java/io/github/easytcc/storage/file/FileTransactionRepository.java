@@ -45,6 +45,31 @@ public final class FileTransactionRepository implements TransactionRepository {
         finally { lock.writeLock().unlock(); }
     }
 
+    @Override public boolean compareAndSet(GlobalTransaction transaction, long expectedVersion) {
+        lock.writeLock().lock();
+        try {
+            Optional<GlobalTransaction> current = readUnlocked(transaction.getXid());
+            if (!current.isPresent() || current.get().getVersion() != expectedVersion) return false;
+            write(transaction, file(transaction.getXid()));
+            return true;
+        } finally { lock.writeLock().unlock(); }
+    }
+
+    @Override public Optional<GlobalTransaction> tryClaimRecovery(String xid, long expectedVersion,
+                                                                   String owner, long leaseUntil, long now) {
+        lock.writeLock().lock();
+        try {
+            Optional<GlobalTransaction> value = readUnlocked(xid);
+            if (!value.isPresent()) return Optional.empty();
+            GlobalTransaction tx = value.get();
+            if (tx.getVersion() != expectedVersion || !recoverable(tx, now)) return Optional.empty();
+            if (tx.getRecoveryOwner() != null && tx.getRecoveryLeaseUntil() > now) return Optional.empty();
+            tx.claimRecovery(owner, leaseUntil);
+            write(tx, file(xid));
+            return Optional.of(tx);
+        } finally { lock.writeLock().unlock(); }
+    }
+
     @Override public List<GlobalTransaction> findRecoverable(long now, int limit) {
         List<GlobalTransaction> result = new ArrayList<GlobalTransaction>();
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory, "*.tx")) {
@@ -67,6 +92,16 @@ public final class FileTransactionRepository implements TransactionRepository {
             try { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE); }
             catch (AtomicMoveNotSupportedException ignored) { Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING); }
         } catch (IOException e) { throw new EasyTccException("Cannot replace transaction file: " + target, e); }
+    }
+
+    private Optional<GlobalTransaction> readUnlocked(String xid) {
+        Path path = file(xid);
+        if (!Files.exists(path)) return Optional.empty();
+        try (ObjectInputStream input = new ObjectInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
+            return Optional.of((GlobalTransaction) input.readObject());
+        } catch (IOException | ClassNotFoundException e) {
+            throw new EasyTccException("Cannot read transaction: " + xid, e);
+        }
     }
 
     private Path file(String xid) {
