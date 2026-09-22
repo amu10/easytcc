@@ -1,0 +1,6 @@
+package io.github.easytcc.core;
+
+public enum BranchStatus {
+    REGISTERED, TRY_SUCCEEDED, TRY_FAILED, CONFIRMING, CONFIRMED,
+    CONFIRM_FAILED, CANCELLING, CANCELLED, CANCEL_FAILED
+}

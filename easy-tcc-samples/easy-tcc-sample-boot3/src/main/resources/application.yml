@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: easy-tcc-sample
+easy-tcc:
+  file-path: ./data/easy-tcc-sample
+  max-retries: 20
+  recovery-interval: 10000
+  recovery-batch-size: 100
