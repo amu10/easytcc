@@ -15,6 +15,11 @@ public class InventoryService {
         if (quantity <= 0) throw new IllegalArgumentException("quantity must be positive");
     }
 
-    public void confirm(String sku, int quantity) { log.info("CONFIRM inventory, sku={}, quantity={}", sku, quantity); }
-    public void cancel(String sku, int quantity) { log.info("CANCEL inventory, sku={}, quantity={}", sku, quantity); }
+    public void confirm(String sku, int quantity) {
+        log.info("CONFIRM inventory, sku={}, quantity={}", sku, quantity);
+    }
+
+    public void cancel(String sku, int quantity) {
+        log.info("CANCEL inventory, sku={}, quantity={}", sku, quantity);
+    }
 }

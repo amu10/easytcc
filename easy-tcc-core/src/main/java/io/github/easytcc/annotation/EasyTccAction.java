@@ -9,6 +9,8 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface EasyTccAction {
     String name() default "";
+
     String confirm();
+
     String cancel();
 }

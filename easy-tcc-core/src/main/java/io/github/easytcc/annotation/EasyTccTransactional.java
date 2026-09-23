@@ -9,5 +9,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface EasyTccTransactional {
     String name() default "";
+
     long timeout() default 30000L;
 }

@@ -7,8 +7,10 @@ import org.springframework.stereotype.Service;
 public class OrderService {
     private final InventoryService inventoryService;
     private final AccountService accountService;
+
     public OrderService(InventoryService inventoryService, AccountService accountService) {
-        this.inventoryService = inventoryService; this.accountService = accountService;
+        this.inventoryService = inventoryService;
+        this.accountService = accountService;
     }
 
     @EasyTccTransactional(name = "create-order", timeout = 30000)

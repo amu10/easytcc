@@ -15,6 +15,11 @@ public class AccountService {
         if (amount > 10000) throw new IllegalStateException("insufficient balance");
     }
 
-    public void confirm(String userId, int amount) { log.info("CONFIRM account, userId={}, amount={}", userId, amount); }
-    public void cancel(String userId, int amount) { log.info("CANCEL account, userId={}, amount={}", userId, amount); }
+    public void confirm(String userId, int amount) {
+        log.info("CONFIRM account, userId={}, amount={}", userId, amount);
+    }
+
+    public void cancel(String userId, int amount) {
+        log.info("CANCEL account, userId={}, amount={}", userId, amount);
+    }
 }

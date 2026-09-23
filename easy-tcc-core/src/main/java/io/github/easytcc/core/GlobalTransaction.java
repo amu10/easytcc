@@ -23,32 +23,121 @@ public final class GlobalTransaction implements Serializable {
     private final List<BranchTransaction> branches = new ArrayList<BranchTransaction>();
 
     public GlobalTransaction(String xid, String name, long createdAt, long deadline) {
-        this.xid = xid; this.name = name; this.createdAt = createdAt; this.deadline = deadline;
+        this.xid = xid;
+        this.name = name;
+        this.createdAt = createdAt;
+        this.deadline = deadline;
         this.status = GlobalStatus.TRYING;
     }
-    public String getXid() { return xid; }
-    public String getName() { return name; }
-    public long getCreatedAt() { return createdAt; }
-    public long getDeadline() { return deadline; }
-    public GlobalStatus getStatus() { return status; }
-    public void setStatus(GlobalStatus status) { this.status = status; this.version++; }
-    public int getRetryCount() { return retryCount; }
-    public void incrementRetryCount() { this.retryCount++; this.version++; }
-    public long getNextRetryAt() { return nextRetryAt; }
-    public void setNextRetryAt(long nextRetryAt) { this.nextRetryAt = nextRetryAt; this.version++; }
-    public long getVersion() { return version; }
-    public String getRecoveryOwner() { return recoveryOwner; }
-    public long getRecoveryLeaseUntil() { return recoveryLeaseUntil; }
-    public void claimRecovery(String owner, long leaseUntil) { this.recoveryOwner = owner; this.recoveryLeaseUntil = leaseUntil; this.version++; }
-    public void clearRecoveryClaim() { this.recoveryOwner = null; this.recoveryLeaseUntil = 0L; this.version++; }
-    public void touch() { this.version++; }
-    public long getExecutionLeaseUntil() { return executionLeaseUntil; }
-    public void setExecutionLeaseUntil(long executionLeaseUntil) { this.executionLeaseUntil = executionLeaseUntil; }
-    public TransactionDecision getDecision() { return decision; }
-    public void setDecision(TransactionDecision decision) { this.decision = decision; this.version++; }
-    public String getLastError() { return lastError; }
-    public void setLastError(String lastError) { this.lastError = lastError; this.version++; }
-    public void resetRetryCount() { this.retryCount = 0; this.version++; }
-    public List<BranchTransaction> getBranches() { return Collections.unmodifiableList(branches); }
-    public void addBranch(BranchTransaction branch) { branches.add(branch); version++; }
+
+    public String getXid() {
+        return xid;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public long getDeadline() {
+        return deadline;
+    }
+
+    public GlobalStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(GlobalStatus status) {
+        this.status = status;
+        this.version++;
+    }
+
+    public int getRetryCount() {
+        return retryCount;
+    }
+
+    public void incrementRetryCount() {
+        this.retryCount++;
+        this.version++;
+    }
+
+    public long getNextRetryAt() {
+        return nextRetryAt;
+    }
+
+    public void setNextRetryAt(long nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
+        this.version++;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    public String getRecoveryOwner() {
+        return recoveryOwner;
+    }
+
+    public long getRecoveryLeaseUntil() {
+        return recoveryLeaseUntil;
+    }
+
+    public void claimRecovery(String owner, long leaseUntil) {
+        this.recoveryOwner = owner;
+        this.recoveryLeaseUntil = leaseUntil;
+        this.version++;
+    }
+
+    public void clearRecoveryClaim() {
+        this.recoveryOwner = null;
+        this.recoveryLeaseUntil = 0L;
+        this.version++;
+    }
+
+    public void touch() {
+        this.version++;
+    }
+
+    public long getExecutionLeaseUntil() {
+        return executionLeaseUntil;
+    }
+
+    public void setExecutionLeaseUntil(long executionLeaseUntil) {
+        this.executionLeaseUntil = executionLeaseUntil;
+    }
+
+    public TransactionDecision getDecision() {
+        return decision;
+    }
+
+    public void setDecision(TransactionDecision decision) {
+        this.decision = decision;
+        this.version++;
+    }
+
+    public String getLastError() {
+        return lastError;
+    }
+
+    public void setLastError(String lastError) {
+        this.lastError = lastError;
+        this.version++;
+    }
+
+    public void resetRetryCount() {
+        this.retryCount = 0;
+        this.version++;
+    }
+
+    public List<BranchTransaction> getBranches() {
+        return Collections.unmodifiableList(branches);
+    }
+
+    public void addBranch(BranchTransaction branch) {
+        branches.add(branch);
+        version++;
+    }
 }
